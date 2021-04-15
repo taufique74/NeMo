@@ -45,7 +45,7 @@ def write_file(name, lines, idx):
     logging.info("wrote", name)
 
 
-def main(scp, id, out, split=False):
+def main(scp, id, out, split=False, chunk_duration=None):
     if os.path.exists(out):
         os.remove(out)
     scp_file = open(scp, 'r').readlines()
@@ -61,10 +61,21 @@ def main(scp, id, out, split=False):
             speaker = list(speaker)
             speaker = ''.join(speaker)
             speakers.append(speaker)
-            meta = {"audio_filepath": line, "duration": float(dur), "label": speaker}
-            lines.append(meta)
-            json.dump(meta, outfile)
-            outfile.write("\n")
+            offset = 0
+            if chunk_duration is not None:
+                while offset + chunk_duration < dur:
+                    meta = {
+                        "audio_filepath": line,
+                        "offset": offset,
+                        "duration": float(chunk_duration),
+                        "label": speaker,
+                    }
+                    lines.append(meta)
+                    json.dump(meta, outfile)
+                    outfile.write("\n")
+                    offset += chunk_duration
+            else:
+                meta = {"audio_filepath": line, "offset": offset, "duration": float(dur), "label": speaker}
 
     path = os.path.dirname(out)
     if split:
@@ -91,6 +102,12 @@ if __name__ == "__main__":
         required=False,
         action='store_true',
     )
+    parser.add_argument(
+        "--chunk_duration",
+        help="max lenght of duration in sec to consider per each manifest record",
+        required=False,
+        type=float,
+    )
     args = parser.parse_args()
 
-    main(args.scp, args.id, args.out, args.split)
+    main(args.scp, args.id, args.out, args.split, args.chunk_duration)

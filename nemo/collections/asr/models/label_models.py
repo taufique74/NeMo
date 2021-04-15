@@ -106,7 +106,7 @@ class EncDecSpeakerLabelModel(ModelPT, ExportableEncDecModel):
             augmentor = process_augmentations(config['augmentor'])
         else:
             augmentor = None
-        
+
         featurizer = WaveformFeaturizer(
             sample_rate=config['sample_rate'], int_values=config.get('int_values', False), augmentor=augmentor
         )
@@ -355,7 +355,6 @@ class ExtractSpeakerEmbeddingsModel(EncDecSpeakerLabelModel):
 
     def test_step(self, batch, batch_ix):
         audio_signal, audio_signal_len, labels, slices = batch
-        a
         _, embs = self.forward(input_signal=audio_signal, input_signal_length=audio_signal_len)
         return {'embs': embs, 'labels': labels, 'slices': slices}
 
@@ -372,6 +371,8 @@ class ExtractSpeakerEmbeddingsModel(EncDecSpeakerLabelModel):
                 dic = json.loads(line)
                 structure = dic['audio_filepath'].split('/')[-3:]
                 uniq_name = '@'.join(structure)
+                if dic.get('offset', None):
+                    uniq_name += '_offset_' + str(dic['offset'])
                 if uniq_name in out_embeddings:
                     raise KeyError("Embeddings for label {} already present in emb dictionary".format(uniq_name))
                 num_slices = slices[idx]
