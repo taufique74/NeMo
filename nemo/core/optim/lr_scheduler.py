@@ -475,7 +475,7 @@ def prepare_lr_scheduler(
             # Remove extra parameters from scheduler_args nest
             # Assume all other parameters are to be passed into scheduler constructor
 
-            if 'name' in scheduler_args and scheduler_args['name'] == 'ReduceLROnPlateau' or scheduler_args['name'] == 'CyclicLR':
+            if 'name' in scheduler_args and scheduler_args['name'] == 'ReduceLROnPlateau':
                 add_max_args_flag = False
                 interval = 'epoch'
             
