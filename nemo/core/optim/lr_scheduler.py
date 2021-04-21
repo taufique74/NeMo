@@ -478,7 +478,7 @@ def prepare_lr_scheduler(
             if 'name' in scheduler_args and scheduler_args['name'] == 'ReduceLROnPlateau':
                 add_max_args_flag = False
                 interval = 'epoch'
-            
+
             if 'name' in scheduler_args and scheduler_args['name'] == 'CyclicLR':
                 add_max_args_flag = False
 
