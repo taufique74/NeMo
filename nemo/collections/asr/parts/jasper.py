@@ -140,7 +140,7 @@ class AttentivePoolingLayer(nn.Module):
         attn = self.scalar_attn(self.linear_activation(scaler_score))
 
         # Filter out zero-paddings
-        attn = attn.masked_fill(mask == 0, float("-inf"))
+        # attn = attn.masked_fill(mask == 0, float("-inf"))
 
         attn = nn.functional.softmax(attn, dim=2)
         mean, std = self.compute_stats(x, attn)
