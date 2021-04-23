@@ -182,7 +182,7 @@ class MTEncDecModel(EncDecNLPModel):
         }
         return {'loss': train_loss, 'log': tensorboard_logs}
 
-    def eval_step(self, batch, batch_idx, mode):
+    def eval_step(self, batch, batch_idx, mode, dataloader_idx):
         for i in range(len(batch)):
             if batch[i].ndim == 3:
                 # Dataset returns already batched data and the first dimension of size 1 added by DataLoader
@@ -200,6 +200,7 @@ class MTEncDecModel(EncDecNLPModel):
         ground_truths = [self.target_processor.detokenize(tgt.split(' ')) for tgt in ground_truths]
         num_non_pad_tokens = np.not_equal(np_tgt, self.decoder_tokenizer.pad_id).sum().item()
         return {
+            'dataloader_idx': dataloader_idx,
             'translations': translations,
             'ground_truths': ground_truths,
             'num_non_pad_tokens': num_non_pad_tokens,
@@ -219,39 +220,46 @@ class MTEncDecModel(EncDecNLPModel):
                     global_step=self.global_step,
                 )
 
-    def validation_step(self, batch, batch_idx):
+    def validation_step(self, batch, batch_idx, dataloader_idx):
         """
         Lightning calls this inside the validation loop with the data from the validation dataloader
         passed in as `batch`.
         """
-        return self.eval_step(batch, batch_idx, 'val')
+        return self.eval_step(batch, batch_idx, 'val', dataloader_idx)
 
     def eval_epoch_end(self, outputs, mode):
         eval_loss = self.eval_loss.compute()
-        translations = list(itertools.chain(*[x['translations'] for x in outputs]))
-        ground_truths = list(itertools.chain(*[x['ground_truths'] for x in outputs]))
+        ans_dict = {}
+        for dataloader_idx, output in enumerate(outputs):
+            translations = list(itertools.chain(*[x['translations'] for x in output]))
+            ground_truths = list(itertools.chain(*[x['ground_truths'] for x in output]))
 
-        assert len(translations) == len(ground_truths)
-        if self.tgt_language in ['ja']:
-            sacre_bleu = corpus_bleu(translations, [ground_truths], tokenize="ja-mecab")
-        elif self.tgt_language in ['zh']:
-            sacre_bleu = corpus_bleu(translations, [ground_truths], tokenize="zh")
-        else:
-            sacre_bleu = corpus_bleu(translations, [ground_truths], tokenize="13a")
+            assert len(translations) == len(ground_truths)
+            if self.tgt_language in ['ja']:
+                sacre_bleu = corpus_bleu(translations, [ground_truths], tokenize="ja-mecab")
+            elif self.tgt_language in ['zh']:
+                sacre_bleu = corpus_bleu(translations, [ground_truths], tokenize="zh")
+            else:
+                sacre_bleu = corpus_bleu(translations, [ground_truths], tokenize="13a")
 
-        dataset_name = "Validation" if mode == 'val' else "Test"
-        logging.info(f"\n\n\n\n{dataset_name} set size: {len(translations)}")
-        logging.info(f"{dataset_name} Sacre BLEU = {sacre_bleu.score}")
-        logging.info(f"{dataset_name} TRANSLATION EXAMPLES:".upper())
-        for i in range(0, 3):
-            ind = random.randint(0, len(translations) - 1)
-            logging.info("    " + '\u0332'.join(f"EXAMPLE {i}:"))
-            logging.info(f"    Prediction:   {translations[ind]}")
-            logging.info(f"    Ground Truth: {ground_truths[ind]}")
+            dataset_name = "Validation" if mode == 'val' else "Test"
+            logging.info(
+                f"Dataset name: {dataset_name}, Dataloader index: {dataloader_idx}, Set size: {len(translations)}"
+            )
+            logging.info(
+                f"Dataset name: {dataset_name}, Dataloader index: {dataloader_idx}, Sacre BLEU = {sacre_bleu.score}"
+            )
+            logging.info(f"Dataset name: {dataset_name}, Dataloader index: {dataloader_idx}, Translation Examples:")
+            for i in range(0, 3):
+                ind = random.randint(0, len(translations) - 1)
+                logging.info("    " + '\u0332'.join(f"EXAMPLE {i}:"))
+                logging.info(f"    Prediction:   {translations[ind]}")
+                logging.info(f"    Ground Truth: {ground_truths[ind]}")
 
-        ans = {f"{mode}_loss": eval_loss, f"{mode}_sacreBLEU": sacre_bleu.score}
-        ans['log'] = dict(ans)
-        return ans
+            ans = {f"{mode}_loss": eval_loss, f"{mode}_sacreBLEU": sacre_bleu.score}
+            ans['log'] = dict(ans)
+            ans_dict[dataloader_idx] = ans
+        return ans_dict
 
     def validation_epoch_end(self, outputs):
         """
@@ -430,10 +438,12 @@ class MTEncDecModel(EncDecNLPModel):
                 reverse_lang_direction=cfg.get("reverse_lang_direction", False),
             )
             dataset.batchify(self.encoder_tokenizer, self.decoder_tokenizer)
+
             if cfg.shuffle:
                 sampler = pt_data.RandomSampler(dataset)
             else:
                 sampler = pt_data.SequentialSampler(dataset)
+
             dataloader = torch.utils.data.DataLoader(
                 dataset=dataset,
                 batch_size=1,
